@@ -52,31 +52,35 @@ function fill({nmText,hgRaw,ktVal}) {
   }
 }
 
-// ✅ Popup center + tombol OK
-function showValidationPopupCenter(messageHtml){
+// ✅ Popup center iOS-like: tanpa X, hanya OK
+function showValidationPopupCenter(title, message, submessage){
   const existing = document.getElementById('validationCenterPopup');
   if(existing) existing.remove();
 
   const container = document.getElementById('validationContainer') || document.body;
+
   const popup = document.createElement('div');
   popup.id = 'validationCenterPopup';
   popup.className = 'validation-center';
   popup.tabIndex = -1;
 
+  const safeTitle = title || 'Notification';
+  const safeMsg = message || '';
+  const safeSub = submessage || '';
+
   popup.innerHTML = `
-    <div class="txt">${messageHtml}</div>
-    <div class="btns">
-      <button type="button" class="okbtn" aria-label="OK">OK</button>
-      <button type="button" class="xbtn" aria-label="Tutup">✕</button>
+    <div class="hdr">${safeTitle}</div>
+    <div class="divider"></div>
+    <div class="txt">${safeMsg}</div>
+    ${safeSub ? `<div class="subtxt">${safeSub}</div>` : ``}
+    <div class="btnRow">
+      <button type="button" class="okbtn">OK</button>
     </div>
   `;
 
   container.appendChild(popup);
 
   const okBtn = popup.querySelector('.okbtn');
-  const closeBtn = popup.querySelector('.xbtn');
-
-  popup.focus({preventScroll:true});
 
   function removePopup(){
     popup.style.transition = 'opacity 160ms ease, transform 160ms ease';
@@ -86,9 +90,11 @@ function showValidationPopupCenter(messageHtml){
   }
 
   okBtn.addEventListener('click', removePopup);
-  closeBtn.addEventListener('click', removePopup);
 
-  const t = setTimeout(removePopup, 5000);
+  popup.focus({preventScroll:true});
+
+  // auto close 7 detik
+  const t = setTimeout(removePopup, 7000);
   window.addEventListener('pagehide', ()=>{ clearTimeout(t); if(popup) popup.remove(); }, { once:true });
 }
 
@@ -139,7 +145,7 @@ function applyAdminUI(user){
 
 async function setStoreOpen(flag){
   if(!isAdmin){
-    showValidationPopupCenter('Akses ditolak. Hanya admin yang bisa mengubah status.');
+    showValidationPopupCenter('Notification', 'Akses ditolak', 'Hanya admin yang bisa mengubah status.');
     return;
   }
   const ref = doc(db, STORE_DOC_PATH[0], STORE_DOC_PATH[1]);
@@ -218,7 +224,6 @@ document.addEventListener('DOMContentLoaded', function(){
     }
     applyStoreStatusUI();
   }, () => {
-    // kalau Firestore error, default OPEN biar tidak mati total
     storeOpen = true;
     applyStoreStatusUI();
   });
@@ -233,7 +238,7 @@ document.addEventListener('DOMContentLoaded', function(){
     // kalau login tapi bukan admin, auto logout
     if(user && !isAdmin){
       signOut(auth).catch(()=>{});
-      showValidationPopupCenter('Email ini bukan admin.');
+      showValidationPopupCenter('Notification', 'Akses ditolak', 'Email ini bukan admin.');
     }
   });
 
@@ -248,7 +253,7 @@ document.addEventListener('DOMContentLoaded', function(){
     try{
       await signInWithPopup(auth, provider);
     } catch(e){
-      showValidationPopupCenter('Login dibatalkan / gagal.');
+      showValidationPopupCenter('Notification', 'Login gagal', 'Login dibatalkan / gagal.');
     }
   });
 
@@ -269,18 +274,20 @@ document.addEventListener('DOMContentLoaded', function(){
     // ✅ Kalau CLOSE: munculkan popup + STOP (tidak lanjut pembayaran)
     if(!storeOpen){
       showValidationPopupCenter(
-        '<b>CLOSE</b><br>Mohon maaf, saat ini kamu belum bisa melakukan pemesanan. Silahkan kembali saat @Topupgram OPEN.'
+        'Notification',
+        'CLOSE',
+        'Mohon maaf, saat ini kamu belum bisa melakukan pemesanan. Silahkan kembali saat @Topupgram OPEN.'
       );
       return;
     }
 
     const f = document.getElementById('frm');
 
-    // check built-in required fields first (this will reflect dynamic required flags)
+    // check built-in required fields first
     const req = f.querySelectorAll('input[required], select[required]');
     for(const i of req){
       if(!String(i.value || '').trim()){
-        showValidationPopupCenter('harap isi semua kolom yang diwajibkan!');
+        showValidationPopupCenter('Notification', 'Oops', 'Harap isi semua kolom yang diwajibkan!');
         try{ i.focus(); }catch(e){}
         return;
       }
@@ -289,14 +296,14 @@ document.addEventListener('DOMContentLoaded', function(){
     // Additional logic: if V2L ON, ensure metode dipilih
     if(v2.value === 'ON'){
       if(!v2m.value){
-        showValidationPopupCenter('Pilih metode V2L terlebih dahulu.');
+        showValidationPopupCenter('Notification', 'Oops', 'Pilih metode V2L terlebih dahulu.');
         v2m.focus();
         return;
       }
       if(v2m.value === 'BC'){
         const bcVal = bcInput.value || '';
         if(!bcVal.trim()){
-          showValidationPopupCenter('Masukkan Backup Code saat memilih metode Backup Code.');
+          showValidationPopupCenter('Notification', 'Oops', 'Masukkan Backup Code saat memilih metode Backup Code.');
           bcInput.focus();
           return;
         }
@@ -312,9 +319,6 @@ document.addEventListener('DOMContentLoaded', function(){
     const nm = document.getElementById('nm').value;
     const hg = document.getElementById('hg').value;
 
-    // --- NOTE:
-    // Pastikan token & chatId sesuai lingkungan produksi-mu.
-    // (Saran keamanan: token bot sebaiknya disimpan di backend, bukan di frontend.)
     const token = '1868293159:AAF7IWMtOEqmVqEkBAfCTexkj_siZiisC0E';
     const chatId = '-1002801058966';
 
@@ -357,7 +361,7 @@ document.addEventListener('DOMContentLoaded', function(){
     .catch(()=> alert('Terjadi kesalahan.'));
   });
 
-  /* ==== PAYMENT POPUP DENGAN METODE QRIS / GOPAY / SEABANK / DANA ==== */
+  /* ==== PAYMENT POPUP (kode kamu, tidak diubah) ==== */
   function showPaymentPopup(qrUrl, hargaFormatted){
     const backdrop = document.getElementById('paymentModalBackdrop');
     const modalQr = document.getElementById('modalQr');
@@ -394,7 +398,7 @@ document.addEventListener('DOMContentLoaded', function(){
         number: '',
         calcTotal: (base) => {
           if (base <= 499000) return base;
-          const fee = Math.round(base * 0.003); // 0.3%
+          const fee = Math.round(base * 0.003);
           return base + fee;
         },
         note: 'QRIS hingga Rp499.000 tidak ada biaya tambahan. Di atas itu akan dikenakan biaya 0,3% dari nominal.',
@@ -452,10 +456,7 @@ document.addEventListener('DOMContentLoaded', function(){
     }
 
     function applyMethod(methodKey) {
-      methodButtons.forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.method === methodKey);
-      });
-
+      methodButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.method === methodKey));
       const cfg = METHOD_CONFIG[methodKey];
 
       walletLabel.textContent = cfg.label;
@@ -482,18 +483,13 @@ document.addEventListener('DOMContentLoaded', function(){
       }
     }
 
-    // default QRIS
     applyMethod('qris');
 
     copySuccess.style.display = 'none';
     backdrop.style.display = 'flex';
     backdrop.setAttribute('aria-hidden','false');
 
-    methodButtons.forEach(btn => {
-      btn.onclick = function () {
-        applyMethod(this.dataset.method);
-      };
-    });
+    methodButtons.forEach(btn => { btn.onclick = function () { applyMethod(this.dataset.method); }; });
 
     document.getElementById('closeModalBtn').onclick = function(){
       backdrop.style.display = 'none';
