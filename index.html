@@ -1,26 +1,13 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Pricelist & Form Robux - VILOG</title>
-
-<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./style.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Pricelist & Form Robux - VILOG</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
 </head>
-
 <body>
-
-<!-- STATUS BAR (GLOBAL, dari Firestore) -->
-<div id="serviceStatusBar" class="service-status-bar">
-  <div class="left">
-    <div class="dot" aria-hidden="true"></div>
-    <div>
-      <strong id="serviceStatusText">Memuat status...</strong><br>
-      <small id="serviceStatusSub">Mohon tunggu.</small>
-    </div>
-  </div>
-</div>
 
 <div class="page">
 
@@ -43,12 +30,12 @@
       <div class="bc" data-nm="160 Robux" data-hg="32000" data-kt="reg">160 Robux<span>Rp32.000</span></div>
       <div class="bc" data-nm="240 Robux" data-hg="48000" data-kt="reg">240 Robux<span>Rp48.000</span></div>
       <div class="bc" data-nm="320 Robux" data-hg="62000" data-kt="reg">320 Robux<span>Rp62.000</span></div>
-      <div class="bc" data-nm="400 Robux" data-hg="000" data-kt="reg">400 Robux<span>No Stock</span></div>
-      <div class="bc" data-nm="480 Robux" data-hg="000" data-kt="reg">480 Robux<span>No Stock</span></div>
-      <div class="bc" data-nm="560 Robux" data-hg="000" data-kt="reg">560 Robux<span>No Stock</span></div>
-      <div class="bc" data-nm="640 Robux" data-hg="000" data-kt="reg">640 Robux<span>No Stock</span></div>
-      <div class="bc" data-nm="720 Robux" data-hg="000" data-kt="reg">720 Robux<span>No Stock</span></div>
-      <div class="bc" data-nm="800 Robux" data-hg="000" data-kt="reg">800 Robux<span>No Stock</span></div>
+      <div class="bc" data-nm="400 Robux" data-hg="77000" data-kt="reg">400 Robux<span>Rp77.000</span></div>
+      <div class="bc" data-nm="480 Robux" data-hg="92400" data-kt="reg">480 Robux<span>Rp92.400</span></div>
+      <div class="bc" data-nm="560 Robux" data-hg="107800" data-kt="reg">560 Robux<span>Rp107.800</span></div>
+      <div class="bc" data-nm="640 Robux" data-hg="123200" data-kt="reg">640 Robux<span>Rp123.200</span></div>
+      <div class="bc" data-nm="720 Robux" data-hg="138600" data-kt="reg">720 Robux<span>Rp138.600</span></div>
+      <div class="bc" data-nm="800 Robux" data-hg="155000" data-kt="reg">800 Robux<span>Rp155.000</span></div>
       <div class="bc" data-nm="1700 Robux" data-hg="310000" data-kt="reg">1.700 Robux<span>Rp310.000</span></div>
       <div class="bc" data-nm="2100 Robux" data-hg="387500" data-kt="reg">2.100 Robux<span>Rp387.500</span></div>
       <div class="bc" data-nm="3400 Robux" data-hg="610000" data-kt="reg">3.400 Robux<span>Rp610.000</span></div>
@@ -191,9 +178,7 @@
   </div>
 </div>
 
-<div id="validationContainer"></div>
-
-<!-- ADMIN PANEL (muncul hanya jika login admin) -->
+<!-- ADMIN PANEL (muncul kalau ?admin=1) -->
 <div id="adminPanel" class="admin-panel" style="display:none;">
   <div class="admin-title">
     <span>Admin Panel</span>
@@ -217,6 +202,9 @@
   </div>
 </div>
 
+<div id="validationContainer"></div>
+
+<!-- IMPORTANT: harus module -->
 <script type="module" src="./app.js"></script>
 </body>
-</html>
+                                                                        </html>
