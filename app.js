@@ -4,12 +4,8 @@
 // 1) FIREBASE SETUP (CDN)
 // =======================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-import {
-  getFirestore, doc, onSnapshot, setDoc, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-import {
-  getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import { getFirestore, doc, onSnapshot, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
 // >>> CONFIG PUNYAMU
 const firebaseConfig = {
@@ -27,6 +23,9 @@ const ADMIN_EMAIL = "dinijanuari23@gmail.com";
 // Firestore doc untuk status toko (global)
 const STORE_DOC_PATH = ["settings", "store"]; // collection: settings, doc: store
 
+// ✅ panel admin hanya tampil kalau URL ada ?admin=1
+const wantAdminPanel = new URLSearchParams(window.location.search).get("admin") === "1";
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
@@ -38,23 +37,25 @@ let isAdmin = false;
 // =======================
 // 2) UTIL UI
 // =======================
-function sanitize(v){return v?Number(String(v).replace(/\D+/g,'')):NaN;}
+function sanitize(v){ return v ? Number(String(v).replace(/\D+/g,'')) : NaN; }
 
 function fill({nmText,hgRaw,ktVal}) {
-  document.getElementById('nm').value = nmText||'';
-  document.getElementById('kt').value = ktVal||'';
+  document.getElementById('nm').value = nmText || '';
+  document.getElementById('kt').value = ktVal || '';
   const h = sanitize(hgRaw);
-  document.getElementById('hg').value = !isNaN(h) ? 'Rp'+new Intl.NumberFormat('id-ID').format(h) : hgRaw;
+  document.getElementById('hg').value = !isNaN(h) ? 'Rp'+new Intl.NumberFormat('id-ID').format(h) : (hgRaw || '');
+
   const el = document.querySelector('.form-container') || document.getElementById('orderSection');
   if(el){
     el.scrollIntoView({behavior:'smooth', block:'center'});
-    setTimeout(()=> document.getElementById('usr').focus(), 200);
+    setTimeout(()=> document.getElementById('usr')?.focus(), 200);
   }
 }
 
 function showValidationPopupCenter(message){
   const existing = document.getElementById('validationCenterPopup');
   if(existing) existing.remove();
+
   const container = document.getElementById('validationContainer') || document.body;
   const popup = document.createElement('div');
   popup.id = 'validationCenterPopup';
@@ -62,14 +63,17 @@ function showValidationPopupCenter(message){
   popup.tabIndex = -1;
   popup.innerHTML = `<div class="txt">${message}</div><button class="xbtn" aria-label="Tutup">✕</button>`;
   container.appendChild(popup);
+
   const closeBtn = popup.querySelector('.xbtn');
   popup.focus({preventScroll:true});
+
   function removePopup(){
     popup.style.transition = 'opacity 160ms ease, transform 160ms ease';
     popup.style.opacity = '0';
     popup.style.transform = 'translate(-50%,-50%) scale(.98)';
     setTimeout(()=> popup.remove(), 170);
   }
+
   closeBtn.addEventListener('click', removePopup);
   const t = setTimeout(removePopup, 4000);
   window.addEventListener('pagehide', ()=>{ clearTimeout(t); if(popup) popup.remove(); }, { once:true });
@@ -115,11 +119,16 @@ function applyAdminUI(user){
   const btnSetOpen = document.getElementById('btnSetOpen');
   const btnSetClose = document.getElementById('btnSetClose');
 
-  if(!panel || !btnLogin || !btnLogout || !emailEl || !btnSetOpen || !btnSetClose) return;
+  // kalau HTML panelnya belum dipasang, stop (biar tidak error)
+  if(!panel) return;
 
-  // panel hanya muncul kalau admin
-  panel.style.display = isAdmin ? 'block' : 'none';
+  // ✅ Panel muncul kalau URL ada ?admin=1 (meskipun belum login)
+  panel.style.display = wantAdminPanel ? 'block' : 'none';
 
+  // kalau elemen tombol belum ada, stop
+  if(!btnLogin || !btnLogout || !emailEl || !btnSetOpen || !btnSetClose) return;
+
+  // Tampilan login/logout
   if(user){
     btnLogin.style.display = 'none';
     btnLogout.style.display = 'inline-block';
@@ -130,8 +139,17 @@ function applyAdminUI(user){
     emailEl.textContent = '';
   }
 
+  // Tombol OPEN/CLOSE aktif hanya kalau admin benar
   btnSetOpen.disabled = !isAdmin;
   btnSetClose.disabled = !isAdmin;
+
+  if(wantAdminPanel && !isAdmin){
+    btnSetOpen.title = 'Login admin dulu';
+    btnSetClose.title = 'Login admin dulu';
+  } else {
+    btnSetOpen.title = '';
+    btnSetClose.title = '';
+  }
 }
 
 async function setStoreOpen(flag){
@@ -148,7 +166,7 @@ async function setStoreOpen(flag){
 // =======================
 document.addEventListener('DOMContentLoaded', function(){
 
-  // Click price cards fill form
+  // Klik card harga => isi form
   document.querySelectorAll('.bc').forEach(b=>{
     b.addEventListener('click', ()=> fill({
       nmText: b.getAttribute('data-nm') || b.textContent.trim(),
@@ -166,6 +184,7 @@ document.addEventListener('DOMContentLoaded', function(){
   const bcInput = document.getElementById('bc');
 
   function updateV2Requirements(){
+    if(!v2 || !v2m || !v2mDiv || !bcDiv || !emDiv || !bcInput) return;
     if(v2.value === 'ON'){
       v2mDiv.classList.remove('hidden');
       v2m.required = true;
@@ -180,6 +199,7 @@ document.addEventListener('DOMContentLoaded', function(){
   }
 
   function updateV2mRequirements(){
+    if(!v2m || !bcDiv || !emDiv || !bcInput) return;
     if(v2m.value === 'BC'){
       bcDiv.classList.remove('hidden');
       emDiv.classList.add('hidden');
@@ -197,8 +217,8 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   }
 
-  v2.addEventListener('change', updateV2Requirements);
-  v2m.addEventListener('change', updateV2mRequirements);
+  v2?.addEventListener('change', updateV2Requirements);
+  v2m?.addEventListener('change', updateV2mRequirements);
   updateV2Requirements();
   updateV2mRequirements();
 
@@ -209,13 +229,12 @@ document.addEventListener('DOMContentLoaded', function(){
   onSnapshot(storeRef, (snap) => {
     if(snap.exists()){
       const data = snap.data();
-      storeOpen = (data.open !== false); // default true if missing
+      storeOpen = (data.open !== false);
     } else {
       storeOpen = true;
     }
     applyStoreStatusUI();
   }, () => {
-    // kalau Firestore error, default OPEN biar tidak mati total
     storeOpen = true;
     applyStoreStatusUI();
   });
@@ -234,34 +253,35 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   });
 
+  // Tampilkan panel admin (kalau ?admin=1) walaupun belum login
+  applyAdminUI(null);
+
   // Login/Logout handlers
   const btnLogin = document.getElementById('btnAdminLogin');
   const btnLogout = document.getElementById('btnAdminLogout');
-  if(btnLogin){
-    btnLogin.addEventListener('click', async ()=>{
-      try{
-        await signInWithPopup(auth, provider);
-      } catch(e){
-        showValidationPopupCenter('Login dibatalkan / gagal.');
-      }
-    });
-  }
-  if(btnLogout){
-    btnLogout.addEventListener('click', async ()=>{
-      try{ await signOut(auth); } catch(e){}
-    });
-  }
+
+  btnLogin?.addEventListener('click', async ()=>{
+    try{
+      await signInWithPopup(auth, provider);
+    } catch(e){
+      showValidationPopupCenter('Login dibatalkan / gagal.');
+    }
+  });
+
+  btnLogout?.addEventListener('click', async ()=>{
+    try{ await signOut(auth); } catch(e){}
+  });
 
   // Admin open/close
   const btnSetOpen = document.getElementById('btnSetOpen');
   const btnSetClose = document.getElementById('btnSetClose');
-  if(btnSetOpen) btnSetOpen.addEventListener('click', ()=> setStoreOpen(true));
-  if(btnSetClose) btnSetClose.addEventListener('click', ()=> setStoreOpen(false));
+  btnSetOpen?.addEventListener('click', ()=> setStoreOpen(true));
+  btnSetClose?.addEventListener('click', ()=> setStoreOpen(false));
 
   // =======================
   // BTN PESAN
   // =======================
-  document.getElementById('btnTg').addEventListener('click', ()=>{
+  document.getElementById('btnTg')?.addEventListener('click', ()=>{
     // STOP kalau layanan tutup
     if(!storeOpen){
       showValidationPopupCenter('Mohon maaf, layanan sedang tutup. Silahkan pesan saat sudah memasuki jam kerja');
@@ -269,6 +289,7 @@ document.addEventListener('DOMContentLoaded', function(){
     }
 
     const f = document.getElementById('frm');
+    if(!f) return;
 
     // check built-in required fields first
     const req = f.querySelectorAll('input[required], select[required]');
@@ -281,30 +302,30 @@ document.addEventListener('DOMContentLoaded', function(){
     }
 
     // Additional logic: if V2L ON, ensure metode dipilih
-    if(v2.value === 'ON'){
-      if(!v2m.value){
+    if(v2?.value === 'ON'){
+      if(!v2m?.value){
         showValidationPopupCenter('Pilih metode V2L terlebih dahulu.');
-        v2m.focus();
+        v2m?.focus();
         return;
       }
       if(v2m.value === 'BC'){
-        const bcVal = bcInput.value || '';
+        const bcVal = bcInput?.value || '';
         if(!bcVal.trim()){
           showValidationPopupCenter('Masukkan Backup Code saat memilih metode Backup Code.');
-          bcInput.focus();
+          bcInput?.focus();
           return;
         }
       }
     }
 
-    const u = document.getElementById('usr').value;
-    const p = document.getElementById('pwd').value;
-    const v = v2.value;
-    const vm = v2m.value;
-    const b = bcDiv.querySelector('input')?.value || '';
-    const kt = document.getElementById('kt').value;
-    const nm = document.getElementById('nm').value;
-    const hg = document.getElementById('hg').value;
+    const u = document.getElementById('usr')?.value || '';
+    const p = document.getElementById('pwd')?.value || '';
+    const v = v2?.value || '';
+    const vm = v2m?.value || '';
+    const b = bcDiv?.querySelector('input')?.value || '';
+    const kt = document.getElementById('kt')?.value || '';
+    const nm = document.getElementById('nm')?.value || '';
+    const hg = document.getElementById('hg')?.value || '';
 
     // TELEGRAM (frontend version - tidak aman)
     const token = '1868293159:AAF7IWMtOEqmVqEkBAfCTexkj_siZiisC0E';
@@ -419,18 +440,10 @@ document.addEventListener('DOMContentLoaded', function(){
     };
 
     function showMessage(msg) {
+      if(!copySuccess) return;
       copySuccess.textContent = msg;
       copySuccess.style.display = 'block';
       setTimeout(()=> copySuccess.style.display = 'none', 2500);
-    }
-
-    function copyTextToClipboard(text, successMsg) {
-      if (!text) return;
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(() => showMessage(successMsg)).catch(() => fallbackCopy(text, successMsg));
-      } else {
-        fallbackCopy(text, successMsg);
-      }
     }
 
     function fallbackCopy(text, successMsg){
@@ -443,62 +456,77 @@ document.addEventListener('DOMContentLoaded', function(){
       document.body.removeChild(tmp);
     }
 
+    function copyTextToClipboard(text, successMsg) {
+      if (!text) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => showMessage(successMsg)).catch(() => fallbackCopy(text, successMsg));
+      } else {
+        fallbackCopy(text, successMsg);
+      }
+    }
+
     function applyMethod(methodKey) {
       methodButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.method === methodKey));
       const cfg = METHOD_CONFIG[methodKey];
 
-      walletLabel.textContent = cfg.label;
-      walletNote.textContent = cfg.note;
+      if(walletLabel) walletLabel.textContent = cfg.label;
+      if(walletNote) walletNote.textContent = cfg.note;
 
       const total = cfg.calcTotal(baseAmount);
-      modalAmount.textContent = formatRupiah(total);
+      if(modalAmount) modalAmount.textContent = formatRupiah(total);
 
       if (cfg.showNumber) {
-        walletNumberTitle.textContent = cfg.numberTitle;
-        walletNumber.textContent = cfg.number;
-        walletNumberWrapper.style.display = 'block';
-        copyNumberBtn.style.display = 'block';
+        if(walletNumberTitle) walletNumberTitle.textContent = cfg.numberTitle;
+        if(walletNumber) walletNumber.textContent = cfg.number;
+        if(walletNumberWrapper) walletNumberWrapper.style.display = 'block';
+        if(copyNumberBtn) copyNumberBtn.style.display = 'block';
       } else {
-        walletNumberWrapper.style.display = 'none';
-        copyNumberBtn.style.display = 'none';
+        if(walletNumberWrapper) walletNumberWrapper.style.display = 'none';
+        if(copyNumberBtn) copyNumberBtn.style.display = 'none';
       }
 
       if (methodKey === 'qris') {
-        modalQr.style.display = 'block';
-        modalQr.src = qrUrl;
+        if(modalQr){
+          modalQr.style.display = 'block';
+          modalQr.src = qrUrl;
+        }
       } else {
-        modalQr.style.display = 'none';
+        if(modalQr) modalQr.style.display = 'none';
       }
     }
 
+    // default QRIS
     applyMethod('qris');
 
-    copySuccess.style.display = 'none';
+    if(!backdrop) return;
+
+    if(copySuccess) copySuccess.style.display = 'none';
     backdrop.style.display = 'flex';
     backdrop.setAttribute('aria-hidden','false');
 
     methodButtons.forEach(btn => { btn.onclick = function () { applyMethod(this.dataset.method); }; });
 
-    document.getElementById('closeModalBtn').onclick = function(){
+    document.getElementById('closeModalBtn')?.addEventListener('click', ()=>{
       backdrop.style.display = 'none';
       backdrop.setAttribute('aria-hidden','true');
-    };
-    backdrop.onclick = function(e){
+    });
+
+    backdrop.addEventListener('click', (e)=>{
       if(e.target === backdrop){
         backdrop.style.display = 'none';
         backdrop.setAttribute('aria-hidden','true');
       }
-    };
+    });
 
-    copyNumberBtn.onclick = function () {
-      copyTextToClipboard(walletNumber.textContent || '', 'Nomor berhasil disalin');
-    };
+    copyNumberBtn?.addEventListener('click', ()=>{
+      copyTextToClipboard(walletNumber?.textContent || '', 'Nomor berhasil disalin');
+    });
 
-    copyAmountBtn.onclick = function(){
-      copyTextToClipboard(modalAmount.textContent || '', 'Jumlah berhasil disalin');
-    };
+    copyAmountBtn?.addEventListener('click', ()=>{
+      copyTextToClipboard(modalAmount?.textContent || '', 'Jumlah berhasil disalin');
+    });
 
-    document.getElementById('openBotBtn').onclick = function(){
+    document.getElementById('openBotBtn')?.addEventListener('click', ()=>{
       const botUsername = 'topupgamesbot';
       const tgScheme = 'tg://resolve?domain=' + encodeURIComponent(botUsername);
       const webLink  = 'https://t.me/' + encodeURIComponent(botUsername) + '?start';
@@ -529,6 +557,6 @@ document.addEventListener('DOMContentLoaded', function(){
         document.removeEventListener('visibilitychange', onVisibilityChange);
         window.removeEventListener('pagehide', cleanup);
       });
-    };
+    }, { once:true });
   }
 });
