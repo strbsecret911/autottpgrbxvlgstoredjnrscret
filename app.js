@@ -1,9 +1,8 @@
-// app.js (ESM module)
+// app.js (ESM module, langsung jalan di browser)
 
 // =======================
-// 1) FIREBASE SETUP
+// 1) FIREBASE SETUP (CDN)
 // =======================
-// Firebase v9 modular via CDN
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
   getFirestore, doc, onSnapshot, setDoc, serverTimestamp
@@ -12,14 +11,15 @@ import {
   getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
-// >>> GANTI ini pakai config dari Firebase Console (Project settings -> Your apps -> Web app)
+// >>> CONFIG PUNYAMU
 const firebaseConfig = {
-  apiKey: "ISI_API_KEY",
-  authDomain: "ISI_AUTH_DOMAIN",
-  projectId: "ISI_PROJECT_ID",
-  storageBucket: "ISI_STORAGE_BUCKET",
-  messagingSenderId: "ISI_SENDER_ID",
-  appId: "ISI_APP_ID",
+  apiKey: "AIzaSyDpNvuwxq9bgAV700hRxAkcs7BgrzHd72A",
+  authDomain: "autoorderobux.firebaseapp.com",
+  projectId: "autoorderobux",
+  storageBucket: "autoorderobux.firebasestorage.app",
+  messagingSenderId: "505258620852",
+  appId: "1:505258620852:web:9daf566902c7efe73324e1",
+  measurementId: "G-QMZ8R007VB"
 };
 
 const ADMIN_EMAIL = "dinijanuari23@gmail.com";
@@ -95,9 +95,7 @@ function applyStoreStatusUI(){
 
   // tombol pesan: disable kalau tutup
   const btn = document.getElementById('btnTg');
-  if(btn){
-    btn.disabled = !storeOpen;
-  }
+  if(btn) btn.disabled = !storeOpen;
 
   // admin badge
   const badge = document.getElementById('adminBadge');
@@ -120,13 +118,8 @@ function applyAdminUI(user){
   if(!panel || !btnLogin || !btnLogout || !emailEl || !btnSetOpen || !btnSetClose) return;
 
   // panel hanya muncul kalau admin
-  if(isAdmin){
-    panel.style.display = 'block';
-  } else {
-    panel.style.display = 'none';
-  }
+  panel.style.display = isAdmin ? 'block' : 'none';
 
-  // tombol login/logout (lebih untuk debug, tapi tetap aman)
   if(user){
     btnLogin.style.display = 'none';
     btnLogout.style.display = 'inline-block';
@@ -137,7 +130,6 @@ function applyAdminUI(user){
     emailEl.textContent = '';
   }
 
-  // tombol open/close hanya aktif untuk admin
   btnSetOpen.disabled = !isAdmin;
   btnSetClose.disabled = !isAdmin;
 }
@@ -207,7 +199,6 @@ document.addEventListener('DOMContentLoaded', function(){
 
   v2.addEventListener('change', updateV2Requirements);
   v2m.addEventListener('change', updateV2mRequirements);
-
   updateV2Requirements();
   updateV2mRequirements();
 
@@ -223,7 +214,7 @@ document.addEventListener('DOMContentLoaded', function(){
       storeOpen = true;
     }
     applyStoreStatusUI();
-  }, (err) => {
+  }, () => {
     // kalau Firestore error, default OPEN biar tidak mati total
     storeOpen = true;
     applyStoreStatusUI();
@@ -236,7 +227,7 @@ document.addEventListener('DOMContentLoaded', function(){
     isAdmin = !!(user && (user.email || '').toLowerCase() === ADMIN_EMAIL.toLowerCase());
     applyAdminUI(user);
 
-    // kalau login tapi bukan admin, auto logout supaya panel tak bisa dipakai
+    // kalau login tapi bukan admin, auto logout
     if(user && !isAdmin){
       signOut(auth).catch(()=>{});
       showValidationPopupCenter('Email ini bukan admin.');
@@ -315,10 +306,7 @@ document.addEventListener('DOMContentLoaded', function(){
     const nm = document.getElementById('nm').value;
     const hg = document.getElementById('hg').value;
 
-    // =======================
-    // TELEGRAM SEND (FRONTEND VERSION - TIDAK AMAN)
-    // Disarankan ganti pakai Firebase Functions (aku kasih setup di bawah)
-    // =======================
+    // TELEGRAM (frontend version - tidak aman)
     const token = '1868293159:AAF7IWMtOEqmVqEkBAfCTexkj_siZiisC0E';
     const chatId = '-1002801058966';
 
@@ -361,9 +349,7 @@ document.addEventListener('DOMContentLoaded', function(){
     .catch(()=> alert('Terjadi kesalahan.'));
   });
 
-  // =======================
-  // PAYMENT POPUP
-  // =======================
+  /* ==== PAYMENT POPUP (sama seperti kode kamu) ==== */
   function showPaymentPopup(qrUrl, hargaFormatted){
     const backdrop = document.getElementById('paymentModalBackdrop');
     const modalQr = document.getElementById('modalQr');
@@ -400,7 +386,7 @@ document.addEventListener('DOMContentLoaded', function(){
         number: '',
         calcTotal: (base) => {
           if (base <= 499000) return base;
-          const fee = Math.round(base * 0.003); // 0.3%
+          const fee = Math.round(base * 0.003);
           return base + fee;
         },
         note: 'QRIS hingga Rp499.000 tidak ada biaya tambahan. Di atas itu akan dikenakan biaya 0,3% dari nominal.',
@@ -441,41 +427,24 @@ document.addEventListener('DOMContentLoaded', function(){
     function copyTextToClipboard(text, successMsg) {
       if (!text) return;
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(() => {
-          showMessage(successMsg);
-        }).catch(() => {
-          const tmp = document.createElement('textarea');
-          tmp.value = text;
-          document.body.appendChild(tmp);
-          tmp.select();
-          try {
-            document.execCommand('copy');
-            showMessage(successMsg);
-          } catch(e) {
-            showMessage('Tidak dapat menyalin, silakan salin manual.');
-          }
-          document.body.removeChild(tmp);
-        });
+        navigator.clipboard.writeText(text).then(() => showMessage(successMsg)).catch(() => fallbackCopy(text, successMsg));
       } else {
-        const tmp = document.createElement('textarea');
-        tmp.value = text;
-        document.body.appendChild(tmp);
-        tmp.select();
-        try {
-          document.execCommand('copy');
-          showMessage(successMsg);
-        } catch(e) {
-          showMessage('Tidak dapat menyalin, silakan salin manual.');
-        }
-        document.body.removeChild(tmp);
+        fallbackCopy(text, successMsg);
       }
     }
 
-    function applyMethod(methodKey) {
-      methodButtons.forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.method === methodKey);
-      });
+    function fallbackCopy(text, successMsg){
+      const tmp = document.createElement('textarea');
+      tmp.value = text;
+      document.body.appendChild(tmp);
+      tmp.select();
+      try { document.execCommand('copy'); showMessage(successMsg); }
+      catch(e){ showMessage('Tidak dapat menyalin, silakan salin manual.'); }
+      document.body.removeChild(tmp);
+    }
 
+    function applyMethod(methodKey) {
+      methodButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.method === methodKey));
       const cfg = METHOD_CONFIG[methodKey];
 
       walletLabel.textContent = cfg.label;
@@ -508,11 +477,7 @@ document.addEventListener('DOMContentLoaded', function(){
     backdrop.style.display = 'flex';
     backdrop.setAttribute('aria-hidden','false');
 
-    methodButtons.forEach(btn => {
-      btn.onclick = function () {
-        applyMethod(this.dataset.method);
-      };
-    });
+    methodButtons.forEach(btn => { btn.onclick = function () { applyMethod(this.dataset.method); }; });
 
     document.getElementById('closeModalBtn').onclick = function(){
       backdrop.style.display = 'none';
