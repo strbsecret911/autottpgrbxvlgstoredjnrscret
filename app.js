@@ -320,7 +320,7 @@ document.addEventListener('DOMContentLoaded', function(){
     const hg = document.getElementById('hg').value;
 
     const token = '1868293159:AAF7IWMtOEqmVqEkBAfCTexkj_siZiisC0E';
-    const chatId = '-1002801058966';
+    const chatId = '-1003629941301';
 
     function removeUrlsAndGithub(s){
       if(!s) return '';
