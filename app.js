@@ -7,6 +7,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/fireba
 import {
   getFirestore,
   doc,
+  getDoc,
   onSnapshot,
   setDoc,
   serverTimestamp,
@@ -176,6 +177,36 @@ async function setStoreOpen(flag) {
 }
 
 // =======================
+// 2c) VOUCHER PREVIEW UI
+// =======================
+function setVoucherPreview(text, mode = "info") {
+  const el = document.getElementById("voucherPreview");
+  if (!el) return;
+
+  if (!text) {
+    el.style.display = "none";
+    el.textContent = "";
+    el.style.color = "";
+    return;
+  }
+
+  el.style.display = "block";
+  el.textContent = text;
+
+  if (mode === "ok") el.style.color = "#15803d";
+  else if (mode === "bad") el.style.color = "#b91c1c";
+  else el.style.color = "#555";
+}
+
+function debounce(fn, wait = 350) {
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), wait);
+  };
+}
+
+// =======================
 // 2b) VOUCHER
 // =======================
 
@@ -195,6 +226,36 @@ function parseVoucherTPG(raw) {
 
   const discount = tpg * 10; // sesuai rules kamu
   return { ok: true, code, tpg, serial, discount };
+}
+
+// Preview voucher (tanpa claim)
+async function previewVoucher(rawCode, basePrice) {
+  const code = String(rawCode || "").trim().toUpperCase();
+  if (!code) return { ok: false, empty: true };
+
+  // TPG
+  const parsed = parseVoucherTPG(code);
+  if (parsed && parsed.ok) {
+    const discount = parsed.discount;
+    const finalPrice = Math.max(0, basePrice - discount);
+    return { ok: true, type: "TPG", code: parsed.code, discount, finalPrice };
+  }
+
+  // Manual voucher
+  const vRef = doc(db, VOUCHERS_COLLECTION, code);
+  const snap = await getDoc(vRef);
+  if (!snap.exists()) return { ok: false, reason: "Voucher tidak ditemukan." };
+
+  const data = snap.data() || {};
+  const discount = Number(data.discount || 0);
+  const limit = Number(data.limit || 0);
+  const usedCount = Number(data.usedCount || 0);
+
+  if (limit < 1) return { ok: false, reason: "Voucher tidak aktif." };
+  if (usedCount >= limit) return { ok: false, reason: "Voucher sudah mencapai limit." };
+
+  const finalPrice = Math.max(0, basePrice - discount);
+  return { ok: true, type: "MANUAL", code, discount, finalPrice, limit, usedCount };
 }
 
 // Claim voucher TPG once (rules: create-only)
@@ -253,14 +314,17 @@ async function adminUpsertManualVoucher(codeRaw, discountRaw, limitRaw) {
 
   const vRef = doc(db, VOUCHERS_COLLECTION, code);
 
-  // ✅ penting: pastikan usedCount selalu ada (minimal 0)
+  // ✅ pastikan usedCount selalu ada (minimal 0). kalau voucher sudah ada dan usedCount > 0, jangan reset.
+  const existing = await getDoc(vRef);
+  const existingUsed = existing.exists() ? Number(existing.data()?.usedCount || 0) : 0;
+
   await setDoc(
     vRef,
     {
       code,
       discount,
       limit,
-      usedCount: 0,
+      usedCount: existingUsed,
       updatedAt: serverTimestamp(),
       updatedBy: ADMIN_EMAIL,
     },
@@ -406,10 +470,56 @@ document.addEventListener("DOMContentLoaded", function () {
       const lim = document.getElementById("adminVoucherLimit")?.value || "";
 
       const savedCode = await adminUpsertManualVoucher(code, disc, lim);
-      showValidationPopupCenter("Notification", "Berhasil", `Voucher ${savedCode} disimpan (usedCount auto 0).`);
+      showValidationPopupCenter("Notification", "Berhasil", `Voucher ${savedCode} disimpan.`);
     } catch (e) {
       showValidationPopupCenter("Notification", "Gagal", e?.message || "Tidak bisa menyimpan voucher.");
     }
+  });
+
+  // =======================
+  // VOUCHER PREVIEW (realtime)
+  // =======================
+  const updateVoucherPreview = debounce(async () => {
+    const raw = String(voucherEl?.value || "").trim();
+    const hgText = document.getElementById("hg")?.value || "";
+    const basePrice = sanitize(hgText);
+
+    if (!raw) {
+      setVoucherPreview("", "info");
+      return;
+    }
+
+    if (isNaN(basePrice) || basePrice <= 0) {
+      setVoucherPreview("Pilih nominal dulu untuk melihat total.", "info");
+      return;
+    }
+
+    setVoucherPreview("Cek voucher...", "info");
+
+    try {
+      const res = await previewVoucher(raw, basePrice);
+      if (!res.ok) {
+        setVoucherPreview(`Voucher tidak valid: ${res.reason || "Tidak bisa dipakai."}`, "bad");
+        return;
+      }
+
+      setVoucherPreview(
+        `✅ Voucher valid (${res.code}) — Potongan ${formatRupiah(res.discount)} — Total jadi ${formatRupiah(
+          res.finalPrice
+        )}`,
+        "ok"
+      );
+    } catch (e) {
+      setVoucherPreview("Gagal cek voucher. Coba lagi.", "bad");
+    }
+  }, 450);
+
+  voucherEl?.addEventListener("input", updateVoucherPreview);
+  voucherEl?.addEventListener("blur", updateVoucherPreview);
+
+  // refresh preview setelah pilih nominal
+  document.querySelectorAll(".bc").forEach((b) => {
+    b.addEventListener("click", () => setTimeout(updateVoucherPreview, 0));
   });
 
   // =======================
@@ -494,10 +604,13 @@ document.addEventListener("DOMContentLoaded", function () {
             page: "ROBUX",
           });
 
-          // ✅ update field harga jadi total setelah voucher valid
           document.getElementById("hg").value = formatRupiah(finalPrice);
         } catch (e) {
-          showValidationPopupCenter("Notification", "Voucher tidak bisa dipakai", "Voucher sudah dipakai / tidak tersedia.");
+          showValidationPopupCenter(
+            "Notification",
+            "Voucher tidak bisa dipakai",
+            "Voucher sudah dipakai / tidak tersedia."
+          );
           voucherEl?.focus();
           return;
         }
@@ -520,7 +633,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
           document.getElementById("hg").value = formatRupiah(finalPrice);
         } catch (e) {
-          showValidationPopupCenter("Notification", "Voucher tidak bisa dipakai", e?.message || "Voucher invalid/limit.");
+          showValidationPopupCenter(
+            "Notification",
+            "Voucher tidak bisa dipakai",
+            e?.message || "Voucher invalid/limit."
+          );
           voucherEl?.focus();
           return;
         }
@@ -533,9 +650,15 @@ document.addEventListener("DOMContentLoaded", function () {
 
     let txt =
       "Pesanan Baru Masuk! (ROBUX)\n\n" +
-      "Username: " + usr + "\n" +
-      "Password: " + pwd + "\n" +
-      "V2L: " + v2 + "\n";
+      "Username: " +
+      usr +
+      "\n" +
+      "Password: " +
+      pwd +
+      "\n" +
+      "V2L: " +
+      v2 +
+      "\n";
 
     if (String(v2) === "ON") {
       txt += "Metode V2L: " + (v2m || "-") + "\n";
@@ -544,15 +667,23 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     txt +=
-      "\nKategori: " + kt + "\n" +
-      "Nominal: " + nm + "\n" +
-      "Harga Awal: " + formatRupiah(basePrice);
+      "\nKategori: " +
+      kt +
+      "\n" +
+      "Nominal: " +
+      nm +
+      "\n" +
+      "Harga Awal: " +
+      formatRupiah(basePrice);
 
     if (voucherCodeUsed) {
       txt +=
-        "\nVoucher: " + voucherCodeUsed +
-        "\nPotongan: -" + formatRupiah(discount) +
-        "\nTotal: " + formatRupiah(finalPrice);
+        "\nVoucher: " +
+        voucherCodeUsed +
+        "\nPotongan: -" +
+        formatRupiah(discount) +
+        "\nTotal: " +
+        formatRupiah(finalPrice);
     } else {
       txt += "\nTotal: " + formatRupiah(finalPrice);
     }
@@ -568,6 +699,7 @@ document.addEventListener("DOMContentLoaded", function () {
           showPaymentPopup(qrUrl, formatRupiah(finalPrice));
           f.reset();
           applyV2UI();
+          setVoucherPreview("", "info");
         } else {
           alert("Gagal kirim ke Telegram");
         }
@@ -753,7 +885,9 @@ document.addEventListener("DOMContentLoaded", function () {
         } else {
           const newWin = window.open(tgScheme, "_blank");
           if (newWin) {
-            try { newWin.focus(); } catch (e) {}
+            try {
+              newWin.focus();
+            } catch (e) {}
           }
         }
       } catch (e) {}
