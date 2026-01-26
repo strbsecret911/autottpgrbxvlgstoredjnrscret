@@ -504,7 +504,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       setVoucherPreview(
-        `✅ Voucher valid (${res.code}) — Potongan ${formatRupiah(res.discount)} — Total jadi ${formatRupiah(
+        `✅ Voucher dapat digunakan. (${res.code}) — Total harga: ${formatRupiah(
           res.finalPrice
         )}`,
         "ok"
