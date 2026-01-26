@@ -39,7 +39,7 @@
       <div class="bc" data-nm="800 Robux" data-hg="148000" data-kt="reg">800 Robux<span>Rp148.000</span></div>
       <div class="bc" data-nm="1700 Robux" data-hg="296000" data-kt="reg">1.700 Robux<span>Rp296.000</span></div>
       <div class="bc" data-nm="4500 Robux" data-hg="740000" data-kt="reg">4.500 Robux<span>Rp740.000</span></div>
-  </div>
+    </div>
   </div>
 
   <div class="category">
@@ -76,15 +76,18 @@
 
   <div class="form-container" id="orderSection">
     <h2>Form Pembelian Robux VILOG</h2>
+
     <form id="frm">
       <div class="form-group">
         <label for="usr">Username Roblox *</label>
         <input type="text" id="usr" name="usr" placeholder="Username Roblox" required>
       </div>
+
       <div class="form-group">
         <label for="pwd">Password Roblox *</label>
         <input type="password" id="pwd" name="pwd" placeholder="Password Roblox" required>
       </div>
+
       <div class="form-group">
         <label for="v2">V2L *</label>
         <select id="v2" name="v2" required>
@@ -113,6 +116,22 @@
         <div class="notes">Pastikan storage email tidak penuh, standby & fast respon.</div>
       </div>
 
+      <!-- ✅ VOUCHER -->
+      <div class="form-group">
+        <label for="voucher">Voucher Code (opsional)</label>
+        <input
+          type="text"
+          id="voucher"
+          name="voucher"
+          placeholder="Masukkan voucher di sini"
+          autocomplete="off"
+        >
+        <div class="notes">
+          Voucher TPG format: <b>TPG120VCMEM123</b> (potongan Rp1.200).<br>
+          Voucher manual: contoh <b>SATURDAYSALE</b>.
+        </div>
+      </div>
+
       <div class="form-group hidden">
         <label for="kt">Kategori *</label>
         <input type="text" id="kt" name="kt" readonly required>
@@ -122,6 +141,7 @@
         <label for="nm">Nominal *</label>
         <input type="text" id="nm" name="nm" readonly required>
       </div>
+
       <div class="form-group">
         <label for="hg">Harga *</label>
         <input type="text" id="hg" name="hg" readonly required>
@@ -132,7 +152,8 @@
       </div>
     </form>
   </div>
-</div>
+
+</div><!-- /.page -->
 
 <!-- PAYMENT MODAL -->
 <div id="paymentModalBackdrop" class="modal-backdrop" aria-hidden="true">
@@ -172,10 +193,15 @@
       <button id="copyAmountBtn" type="button">Salin Jumlah</button>
       <button id="openBotBtn" type="button">Buka Bot</button>
     </div>
-    <div class="small-note">Setelah bayar dan screenshot, klik Buka Bot untuk konfirmasi Pembayaran agar pesanan segera diproses.</div>
+
+    <div class="small-note">
+      Setelah bayar dan screenshot, klik Buka Bot untuk konfirmasi Pembayaran agar pesanan segera diproses.
+    </div>
+
     <div style="margin-top:10px;">
       <button id="closeModalBtn" type="button" style="width:100%; background:#e0e0e0; color:#222;">Tutup</button>
     </div>
+
     <div id="copySuccess" class="copy-success"></div>
   </div>
 </div>
@@ -200,6 +226,28 @@
 
   <div class="admin-mini">
     Admin hanya untuk <b>owner</b> (Google Sign-In).<br>
+  </div>
+
+  <!-- ✅ Voucher Manual (Admin) -->
+  <div style="margin-top:10px;">
+    <div style="font-weight:900;color:#23314a;margin-bottom:6px;">Voucher Manual</div>
+
+    <div class="form-group" style="margin-bottom:8px;">
+      <label for="adminVoucherCode">Kode Voucher</label>
+      <input id="adminVoucherCode" type="text" placeholder="SATURDAYSALE">
+    </div>
+
+    <div class="form-group" style="margin-bottom:8px;">
+      <label for="adminVoucherDiscount">Potongan (Rp)</label>
+      <input id="adminVoucherDiscount" type="number" placeholder="500" min="0">
+    </div>
+
+    <div class="form-group" style="margin-bottom:8px;">
+      <label for="adminVoucherLimit">Limit pemakaian (global)</label>
+      <input id="adminVoucherLimit" type="number" placeholder="5" min="1">
+    </div>
+
+    <button type="button" id="btnCreateVoucher">Buat / Update Voucher</button>
   </div>
 </div>
 
