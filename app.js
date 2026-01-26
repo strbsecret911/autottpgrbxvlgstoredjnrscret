@@ -4,10 +4,23 @@
 // 1) FIREBASE SETUP (CDN)
 // =======================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-import { getFirestore, doc, onSnapshot, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import {
+  getFirestore,
+  doc,
+  onSnapshot,
+  setDoc,
+  serverTimestamp,
+  runTransaction,
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  onAuthStateChanged,
+  signOut,
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
-// >>> CONFIG PUNYAMU
+// >>> CONFIG PUNYAMU (samakan dengan project yang sama)
 const firebaseConfig = {
   apiKey: "AIzaSyDpNvuwxq9bgAV700hRxAkcs7BgrzHd72A",
   authDomain: "autoorderobux.firebaseapp.com",
@@ -15,13 +28,19 @@ const firebaseConfig = {
   storageBucket: "autoorderobux.firebasestorage.app",
   messagingSenderId: "505258620852",
   appId: "1:505258620852:web:9daf566902c7efe73324e1",
-  measurementId: "G-QMZ8R007VB"
+  measurementId: "G-QMZ8R007VB",
 };
 
 const ADMIN_EMAIL = "dinijanuari23@gmail.com";
 const STORE_DOC_PATH = ["settings", "store"]; // collection: settings, doc: store
 
-// ✅ panel admin hanya tampil kalau URL ada ?admin=1
+// Voucher TPG one-time global
+const VOUCHER_COLLECTION = "vouchers_used"; // doc id = kode voucher
+
+// Voucher manual + limit global
+const VOUCHERS_COLLECTION = "vouchers"; // doc id = kode voucher manual
+const VOUCHER_USES_COLLECTION = "voucher_uses"; // log pemakaian (optional)
+
 const wantAdminPanel = new URLSearchParams(window.location.search).get("admin") === "1";
 
 const app = initializeApp(firebaseConfig);
@@ -35,38 +54,39 @@ let isAdmin = false;
 // =======================
 // 2) UTIL UI
 // =======================
-function sanitize(v){ return v ? Number(String(v).replace(/\D+/g,'')) : NaN; }
-
-function fill({nmText,hgRaw,ktVal}) {
-  document.getElementById('nm').value = nmText || '';
-  document.getElementById('kt').value = ktVal || '';
-  const h = sanitize(hgRaw);
-  document.getElementById('hg').value = !isNaN(h)
-    ? 'Rp'+new Intl.NumberFormat('id-ID').format(h)
-    : (hgRaw || '');
-
-  const el = document.querySelector('.form-container') || document.getElementById('orderSection');
-  if(el){
-    el.scrollIntoView({behavior:'smooth', block:'center'});
-    setTimeout(()=> document.getElementById('usr')?.focus(), 200);
-  }
+function sanitize(v) {
+  return v ? Number(String(v).replace(/\D+/g, "")) : NaN;
+}
+function formatRupiah(num) {
+  return "Rp" + new Intl.NumberFormat("id-ID").format(num);
 }
 
-// ✅ Popup center iOS-like: tanpa X, hanya OK
-function showValidationPopupCenter(title, message, submessage){
-  const existing = document.getElementById('validationCenterPopup');
-  if(existing) existing.remove();
+function fill({ nmText, hgRaw, ktVal }) {
+  document.getElementById("nm").value = nmText || "";
+  document.getElementById("kt").value = ktVal || "";
 
-  const container = document.getElementById('validationContainer') || document.body;
+  const h = sanitize(hgRaw);
+  document.getElementById("hg").value = !isNaN(h) ? formatRupiah(h) : hgRaw || "";
 
-  const popup = document.createElement('div');
-  popup.id = 'validationCenterPopup';
-  popup.className = 'validation-center';
+  const el = document.querySelector(".form-container") || document.getElementById("orderSection");
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+// Popup iOS-like
+function showValidationPopupCenter(title, message, submessage) {
+  const existing = document.getElementById("validationCenterPopup");
+  if (existing) existing.remove();
+
+  const container = document.getElementById("validationContainer") || document.body;
+
+  const popup = document.createElement("div");
+  popup.id = "validationCenterPopup";
+  popup.className = "validation-center";
   popup.tabIndex = -1;
 
-  const safeTitle = title || 'Notification';
-  const safeMsg = message || '';
-  const safeSub = submessage || '';
+  const safeTitle = title || "Notification";
+  const safeMsg = message || "";
+  const safeSub = submessage || "";
 
   popup.innerHTML = `
     <div class="hdr">${safeTitle}</div>
@@ -80,72 +100,75 @@ function showValidationPopupCenter(title, message, submessage){
 
   container.appendChild(popup);
 
-  const okBtn = popup.querySelector('.okbtn');
+  const okBtn = popup.querySelector(".okbtn");
 
-  function removePopup(){
-    popup.style.transition = 'opacity 160ms ease, transform 160ms ease';
-    popup.style.opacity = '0';
-    popup.style.transform = 'translate(-50%,-50%) scale(.98)';
-    setTimeout(()=> popup.remove(), 170);
+  function removePopup() {
+    popup.style.transition = "opacity 160ms ease, transform 160ms ease";
+    popup.style.opacity = "0";
+    popup.style.transform = "translate(-50%,-50%) scale(.98)";
+    setTimeout(() => popup.remove(), 170);
   }
 
-  okBtn.addEventListener('click', removePopup);
+  okBtn.addEventListener("click", removePopup);
+  popup.focus({ preventScroll: true });
 
-  popup.focus({preventScroll:true});
-
-  // auto close 7 detik
   const t = setTimeout(removePopup, 7000);
-  window.addEventListener('pagehide', ()=>{ clearTimeout(t); if(popup) popup.remove(); }, { once:true });
+  window.addEventListener(
+    "pagehide",
+    () => {
+      clearTimeout(t);
+      if (popup) popup.remove();
+    },
+    { once: true }
+  );
 }
 
-// ✅ Tidak ada status bar lagi. Hanya update badge admin.
-function applyStoreStatusUI(){
-  const badge = document.getElementById('adminBadge');
-  if(badge){
-    badge.textContent = storeOpen ? 'OPEN' : 'CLOSED';
-    badge.style.borderColor = storeOpen ? '#bbf7d0' : '#fecaca';
-    badge.style.background = storeOpen ? '#ecfdf5' : '#fef2f2';
-    badge.style.color = storeOpen ? '#14532d' : '#7f1d1d';
+function applyStoreStatusUI() {
+  const badge = document.getElementById("adminBadge");
+  if (badge) {
+    badge.textContent = storeOpen ? "OPEN" : "CLOSED";
+    badge.style.borderColor = storeOpen ? "#bbf7d0" : "#fecaca";
+    badge.style.background = storeOpen ? "#ecfdf5" : "#fef2f2";
+    badge.style.color = storeOpen ? "#14532d" : "#7f1d1d";
   }
 
-  // tombol pesan jangan di-disable biar saat CLOSE masih bisa diklik -> munculin popup
-  const btn = document.getElementById('btnTg');
-  if(btn) btn.disabled = false;
+  const btn = document.getElementById("btnTg");
+  if (btn) btn.disabled = false;
 }
 
-function applyAdminUI(user){
-  const panel = document.getElementById('adminPanel');
-  const btnLogin = document.getElementById('btnAdminLogin');
-  const btnLogout = document.getElementById('btnAdminLogout');
-  const emailEl = document.getElementById('adminEmail');
-  const btnSetOpen = document.getElementById('btnSetOpen');
-  const btnSetClose = document.getElementById('btnSetClose');
+function applyAdminUI(user) {
+  const panel = document.getElementById("adminPanel");
+  const btnLogin = document.getElementById("btnAdminLogin");
+  const btnLogout = document.getElementById("btnAdminLogout");
+  const emailEl = document.getElementById("adminEmail");
+  const btnSetOpen = document.getElementById("btnSetOpen");
+  const btnSetClose = document.getElementById("btnSetClose");
 
-  if(!panel) return;
+  if (!panel) return;
 
-  // ✅ Panel muncul kalau URL ada ?admin=1 (meskipun belum login)
-  panel.style.display = wantAdminPanel ? 'block' : 'none';
+  panel.style.display = wantAdminPanel ? "block" : "none";
+  if (!btnLogin || !btnLogout || !emailEl || !btnSetOpen || !btnSetClose) return;
 
-  if(!btnLogin || !btnLogout || !emailEl || !btnSetOpen || !btnSetClose) return;
-
-  if(user){
-    btnLogin.style.display = 'none';
-    btnLogout.style.display = 'inline-block';
-    emailEl.textContent = user.email || '';
+  if (user) {
+    btnLogin.style.display = "none";
+    btnLogout.style.display = "inline-block";
+    emailEl.textContent = user.email || "";
   } else {
-    btnLogin.style.display = 'inline-block';
-    btnLogout.style.display = 'none';
-    emailEl.textContent = '';
+    btnLogin.style.display = "inline-block";
+    btnLogout.style.display = "none";
+    emailEl.textContent = "";
   }
 
-  // Tombol OPEN/CLOSE aktif hanya jika admin benar
   btnSetOpen.disabled = !isAdmin;
   btnSetClose.disabled = !isAdmin;
+
+  const btnCreateVoucher = document.getElementById("btnCreateVoucher");
+  if (btnCreateVoucher) btnCreateVoucher.disabled = !isAdmin;
 }
 
-async function setStoreOpen(flag){
-  if(!isAdmin){
-    showValidationPopupCenter('Notification', 'Akses ditolak', 'Hanya admin yang bisa mengubah status.');
+async function setStoreOpen(flag) {
+  if (!isAdmin) {
+    showValidationPopupCenter("Notification", "Akses ditolak", "Hanya admin yang bisa mengubah status.");
     return;
   }
   const ref = doc(db, STORE_DOC_PATH[0], STORE_DOC_PATH[1]);
@@ -153,393 +176,597 @@ async function setStoreOpen(flag){
 }
 
 // =======================
-// 3) ORIGINAL LOGIC + FIREBASE LISTENERS
+// 2b) VOUCHER
 // =======================
-document.addEventListener('DOMContentLoaded', function(){
 
-  // Click price cards fill form
-  document.querySelectorAll('.bc').forEach(b=>{
-    b.addEventListener('click', ()=> fill({
-      nmText: b.getAttribute('data-nm') || b.textContent.trim(),
-      hgRaw: b.getAttribute('data-hg') || '',
-      ktVal: b.getAttribute('data-kt') || ''
-    }));
+// Voucher TPG: TPG(100-400)VCMEM(1-99999)
+function parseVoucherTPG(raw) {
+  const code = String(raw || "").trim().toUpperCase();
+  if (!code) return null;
+
+  const m = code.match(/^TPG(\d{3})VCMEM([1-9]\d{0,4})$/);
+  if (!m) return { ok: false, code, reason: "Format voucher tidak valid." };
+
+  const tpg = Number(m[1]);
+  const serial = Number(m[2]);
+
+  if (tpg < 100 || tpg > 400) return { ok: false, code, reason: "Kode TPG harus 100–400." };
+  if (serial < 1 || serial > 99999) return { ok: false, code, reason: "Angka belakang harus 1–99999." };
+
+  const discount = tpg * 10; // sesuai rules kamu
+  return { ok: true, code, tpg, serial, discount };
+}
+
+// Claim voucher TPG once (rules: create-only)
+async function claimVoucherOnce(voucherCode, orderMeta) {
+  const ref = doc(db, VOUCHER_COLLECTION, voucherCode);
+  await setDoc(ref, {
+    usedAt: serverTimestamp(),
+    ...orderMeta,
+  });
+}
+
+// Claim voucher manual (limit global) + log use
+async function claimManualVoucher(codeRaw, orderMeta) {
+  const code = String(codeRaw || "").trim().toUpperCase();
+  if (!code) return null;
+
+  const vRef = doc(db, VOUCHERS_COLLECTION, code);
+
+  const res = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(vRef);
+    if (!snap.exists()) throw new Error("Voucher tidak ditemukan.");
+
+    const data = snap.data() || {};
+    const discount = Number(data.discount || 0);
+    const limit = Number(data.limit || 0);
+    const usedCount = Number(data.usedCount || 0);
+
+    if (limit < 1) throw new Error("Voucher tidak aktif.");
+    if (usedCount >= limit) throw new Error("Voucher sudah mencapai limit.");
+
+    // update hanya usedCount (biar aman sesuai rules publik)
+    tx.set(vRef, { usedCount: usedCount + 1 }, { merge: true });
+
+    // log pemakaian (optional)
+    const useId = `${code}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const useRef = doc(db, VOUCHER_USES_COLLECTION, useId);
+    tx.set(useRef, { code, usedAt: serverTimestamp(), ...orderMeta });
+
+    return { code, discount, limit, usedCount: usedCount + 1 };
   });
 
-  // V2L dynamic fields
-  const v2 = document.getElementById('v2');
-  const v2m = document.getElementById('v2m');
-  const v2mDiv = document.getElementById('v2m_div');
-  const bcDiv = document.getElementById('bc_div');
-  const emDiv = document.getElementById('em_div');
-  const bcInput = document.getElementById('bc');
+  return res;
+}
 
-  function updateV2Requirements(){
-    if(v2.value === 'ON'){
-      v2mDiv.classList.remove('hidden');
-      v2m.required = true;
+// Admin create/update voucher manual
+async function adminUpsertManualVoucher(codeRaw, discountRaw, limitRaw) {
+  if (!isAdmin) throw new Error("Akses ditolak.");
+
+  const code = String(codeRaw || "").trim().toUpperCase();
+  const discount = Number(discountRaw);
+  const limit = Number(limitRaw);
+
+  if (!code) throw new Error("Kode voucher wajib diisi.");
+  if (!Number.isFinite(discount) || discount < 0) throw new Error("Potongan harus angka >= 0.");
+  if (!Number.isFinite(limit) || limit < 1) throw new Error("Limit minimal 1.");
+
+  const vRef = doc(db, VOUCHERS_COLLECTION, code);
+
+  // ✅ penting: pastikan usedCount selalu ada (minimal 0)
+  await setDoc(
+    vRef,
+    {
+      code,
+      discount,
+      limit,
+      usedCount: 0,
+      updatedAt: serverTimestamp(),
+      updatedBy: ADMIN_EMAIL,
+    },
+    { merge: true }
+  );
+
+  return code;
+}
+
+// =======================
+// 3) LOGIC + FIREBASE LISTENERS
+// =======================
+document.addEventListener("DOMContentLoaded", function () {
+  // klik pricelist -> isi form
+  document.querySelectorAll(".bc").forEach((b) => {
+    b.addEventListener("click", () =>
+      fill({
+        nmText: b.getAttribute("data-nm") || b.textContent.trim(),
+        hgRaw: b.getAttribute("data-hg") || "",
+        ktVal: b.getAttribute("data-kt") || "",
+      })
+    );
+  });
+
+  // robux fields
+  const usrEl = document.getElementById("usr");
+  const pwdEl = document.getElementById("pwd");
+  const v2El = document.getElementById("v2");
+  const v2mEl = document.getElementById("v2m");
+  const bcEl = document.getElementById("bc");
+
+  const v2mDiv = document.getElementById("v2m_div");
+  const bcDiv = document.getElementById("bc_div");
+  const emDiv = document.getElementById("em_div");
+
+  const voucherEl = document.getElementById("voucher");
+
+  // show/hide V2L stuff
+  function setHidden(el, hidden) {
+    if (!el) return;
+    el.classList.toggle("hidden", !!hidden);
+  }
+  function setRequired(id, req) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (req) el.setAttribute("required", "required");
+    else el.removeAttribute("required");
+  }
+  function resetV2Sub() {
+    setHidden(v2mDiv, true);
+    setHidden(bcDiv, true);
+    setHidden(emDiv, true);
+
+    if (v2mEl) v2mEl.value = "";
+    if (bcEl) bcEl.value = "";
+
+    setRequired("v2m", false);
+    setRequired("bc", false);
+  }
+  function applyV2UI() {
+    const v2 = String(v2El?.value || "");
+    if (v2 === "ON") {
+      setHidden(v2mDiv, false);
+      setRequired("v2m", true);
+
+      const m = String(v2mEl?.value || "");
+      if (m === "BC") {
+        setHidden(bcDiv, false);
+        setHidden(emDiv, true);
+        setRequired("bc", true);
+      } else if (m === "EM") {
+        setHidden(bcDiv, true);
+        setHidden(emDiv, false);
+        setRequired("bc", false);
+      } else {
+        setHidden(bcDiv, true);
+        setHidden(emDiv, true);
+        setRequired("bc", false);
+      }
     } else {
-      v2mDiv.classList.add('hidden');
-      v2m.value = '';
-      v2m.required = false;
-      bcDiv.classList.add('hidden');
-      emDiv.classList.add('hidden');
-      bcInput.required = false;
+      resetV2Sub();
     }
   }
 
-  function updateV2mRequirements(){
-    if(v2m.value === 'BC'){
-      bcDiv.classList.remove('hidden');
-      emDiv.classList.add('hidden');
-      bcInput.required = true;
-    } else if(v2m.value === 'EM'){
-      emDiv.classList.remove('hidden');
-      bcDiv.classList.add('hidden');
-      bcInput.required = false;
-      bcInput.value = '';
-    } else {
-      bcDiv.classList.add('hidden');
-      emDiv.classList.add('hidden');
-      bcInput.required = false;
-      bcInput.value = '';
-    }
-  }
+  v2El?.addEventListener("change", applyV2UI);
+  v2mEl?.addEventListener("change", applyV2UI);
+  applyV2UI();
 
-  v2.addEventListener('change', updateV2Requirements);
-  v2m.addEventListener('change', updateV2mRequirements);
-  updateV2Requirements();
-  updateV2mRequirements();
-
-  // =======================
-  // FIRESTORE: LISTEN STORE STATUS (GLOBAL)
-  // =======================
+  // store listener
   const storeRef = doc(db, STORE_DOC_PATH[0], STORE_DOC_PATH[1]);
-  onSnapshot(storeRef, (snap) => {
-    if(snap.exists()){
-      const data = snap.data();
-      storeOpen = (data.open !== false); // default true if missing
-    } else {
+  onSnapshot(
+    storeRef,
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        storeOpen = data.open !== false;
+      } else {
+        storeOpen = true;
+      }
+      applyStoreStatusUI();
+    },
+    () => {
       storeOpen = true;
+      applyStoreStatusUI();
     }
-    applyStoreStatusUI();
-  }, () => {
-    storeOpen = true;
-    applyStoreStatusUI();
-  });
+  );
 
-  // =======================
-  // AUTH: ADMIN ONLY
-  // =======================
+  // admin auth
   onAuthStateChanged(auth, (user) => {
-    isAdmin = !!(user && (user.email || '').toLowerCase() === ADMIN_EMAIL.toLowerCase());
+    isAdmin = !!(user && (user.email || "").toLowerCase() === ADMIN_EMAIL.toLowerCase());
     applyAdminUI(user);
 
-    // kalau login tapi bukan admin, auto logout
-    if(user && !isAdmin){
-      signOut(auth).catch(()=>{});
-      showValidationPopupCenter('Notification', 'Akses ditolak', 'Email ini bukan admin.');
+    if (user && !isAdmin) {
+      signOut(auth).catch(() => {});
+      showValidationPopupCenter("Notification", "Akses ditolak", "Email ini bukan admin.");
     }
   });
 
-  // tampilkan panel admin (kalau ?admin=1) walaupun belum login
   applyAdminUI(null);
 
-  // Login/Logout handlers
-  const btnLogin = document.getElementById('btnAdminLogin');
-  const btnLogout = document.getElementById('btnAdminLogout');
-
-  btnLogin?.addEventListener('click', async ()=>{
-    try{
+  document.getElementById("btnAdminLogin")?.addEventListener("click", async () => {
+    try {
       await signInWithPopup(auth, provider);
-    } catch(e){
-      showValidationPopupCenter('Notification', 'Login gagal', 'Login dibatalkan / gagal.');
+    } catch (e) {
+      showValidationPopupCenter("Notification", "Login gagal", "Login dibatalkan / gagal.");
     }
   });
 
-  btnLogout?.addEventListener('click', async ()=>{
-    try{ await signOut(auth); } catch(e){}
+  document.getElementById("btnAdminLogout")?.addEventListener("click", async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {}
   });
 
-  // Admin open/close
-  const btnSetOpen = document.getElementById('btnSetOpen');
-  const btnSetClose = document.getElementById('btnSetClose');
-  btnSetOpen?.addEventListener('click', ()=> setStoreOpen(true));
-  btnSetClose?.addEventListener('click', ()=> setStoreOpen(false));
+  document.getElementById("btnSetOpen")?.addEventListener("click", () => setStoreOpen(true));
+  document.getElementById("btnSetClose")?.addEventListener("click", () => setStoreOpen(false));
+
+  // ADMIN: create/update voucher manual
+  document.getElementById("btnCreateVoucher")?.addEventListener("click", async () => {
+    try {
+      const code = document.getElementById("adminVoucherCode")?.value || "";
+      const disc = document.getElementById("adminVoucherDiscount")?.value || "";
+      const lim = document.getElementById("adminVoucherLimit")?.value || "";
+
+      const savedCode = await adminUpsertManualVoucher(code, disc, lim);
+      showValidationPopupCenter("Notification", "Berhasil", `Voucher ${savedCode} disimpan (usedCount auto 0).`);
+    } catch (e) {
+      showValidationPopupCenter("Notification", "Gagal", e?.message || "Tidak bisa menyimpan voucher.");
+    }
+  });
 
   // =======================
   // BTN PESAN
   // =======================
-  document.getElementById('btnTg').addEventListener('click', ()=>{
-    // ✅ Kalau CLOSE: munculkan popup + STOP (tidak lanjut pembayaran)
-    if(!storeOpen){
+  document.getElementById("btnTg")?.addEventListener("click", async () => {
+    if (!storeOpen) {
       showValidationPopupCenter(
-        'Notification',
-        'SEDANG ISTIRAHAT/CLOSE',
-        'Mohon maaf, saat ini kamu belum bisa melakukan pemesanan. Silahkan kembali dan coba lagi nanti.'
+        "Notification",
+        "SEDANG ISTIRAHAT/CLOSE",
+        "Mohon maaf, saat ini kamu belum bisa melakukan pemesanan."
       );
       return;
     }
 
-    const f = document.getElementById('frm');
+    const f = document.getElementById("frm");
+    const req = f.querySelectorAll("input[required], select[required]");
 
-    // check built-in required fields first
-    const req = f.querySelectorAll('input[required], select[required]');
-    for(const i of req){
-      if(!String(i.value || '').trim()){
-        showValidationPopupCenter('Notification', 'Oops', 'Harap isi semua kolom yang diwajibkan!');
-        try{ i.focus(); }catch(e){}
+    for (const i of req) {
+      if (!String(i.value || "").trim()) {
+        showValidationPopupCenter("Notification", "Oops", "Harap isi semua kolom yang diwajibkan!");
+        i.focus();
         return;
       }
     }
 
-    // Additional logic: if V2L ON, ensure metode dipilih
-    if(v2.value === 'ON'){
-      if(!v2m.value){
-        showValidationPopupCenter('Notification', 'Oops', 'Pilih metode V2L terlebih dahulu.');
-        v2m.focus();
+    const usr = usrEl?.value || "";
+    const pwd = pwdEl?.value || "";
+    const v2 = v2El?.value || "";
+    const v2m = v2mEl?.value || "";
+    const bc = bcEl?.value || "";
+
+    const kt = document.getElementById("kt")?.value || "";
+    const nm = document.getElementById("nm")?.value || "";
+    const hgText = document.getElementById("hg")?.value || "";
+
+    const basePrice = sanitize(hgText);
+    if (isNaN(basePrice) || basePrice <= 0) {
+      showValidationPopupCenter("Notification", "Oops", "Pilih nominal dulu ya.");
+      return;
+    }
+
+    // Validasi V2L logic
+    if (String(v2) === "ON") {
+      if (!String(v2m).trim()) {
+        showValidationPopupCenter("Notification", "Oops", "Pilih Metode V2L dulu ya.");
+        v2mEl?.focus();
         return;
       }
-      if(v2m.value === 'BC'){
-        const bcVal = bcInput.value || '';
-        if(!bcVal.trim()){
-          showValidationPopupCenter('Notification', 'Oops', 'Masukkan Backup Code saat memilih metode Backup Code.');
-          bcInput.focus();
+      if (String(v2m) === "BC" && !String(bc).trim()) {
+        showValidationPopupCenter("Notification", "Oops", "Isi Backup Code dulu ya.");
+        bcEl?.focus();
+        return;
+      }
+    }
+
+    // Voucher (opsional)
+    let voucherCodeUsed = "";
+    let discount = 0;
+    let finalPrice = basePrice;
+
+    const rawVoucher = String(voucherEl?.value || "").trim();
+    if (rawVoucher) {
+      const parsedTPG = parseVoucherTPG(rawVoucher);
+
+      if (parsedTPG && parsedTPG.ok) {
+        // TPG one-time
+        voucherCodeUsed = parsedTPG.code;
+        discount = parsedTPG.discount;
+        finalPrice = Math.max(0, basePrice - discount);
+
+        try {
+          await claimVoucherOnce(parsedTPG.code, {
+            usr,
+            v2,
+            v2m,
+            product: nm,
+            basePrice,
+            discount,
+            finalPrice,
+            type: "TPG",
+            page: "ROBUX",
+          });
+
+          // ✅ update field harga jadi total setelah voucher valid
+          document.getElementById("hg").value = formatRupiah(finalPrice);
+        } catch (e) {
+          showValidationPopupCenter("Notification", "Voucher tidak bisa dipakai", "Voucher sudah dipakai / tidak tersedia.");
+          voucherEl?.focus();
+          return;
+        }
+      } else {
+        // Manual voucher with limit
+        try {
+          const claimed = await claimManualVoucher(rawVoucher, {
+            usr,
+            v2,
+            v2m,
+            product: nm,
+            basePrice,
+            type: "MANUAL",
+            page: "ROBUX",
+          });
+
+          voucherCodeUsed = claimed.code;
+          discount = Number(claimed.discount || 0);
+          finalPrice = Math.max(0, basePrice - discount);
+
+          document.getElementById("hg").value = formatRupiah(finalPrice);
+        } catch (e) {
+          showValidationPopupCenter("Notification", "Voucher tidak bisa dipakai", e?.message || "Voucher invalid/limit.");
+          voucherEl?.focus();
           return;
         }
       }
     }
 
-    const u = document.getElementById('usr').value;
-    const p = document.getElementById('pwd').value;
-    const v = v2.value;
-    const vm = v2m.value;
-    const b = bcDiv.querySelector('input')?.value || '';
-    const kt = document.getElementById('kt').value;
-    const nm = document.getElementById('nm').value;
-    const hg = document.getElementById('hg').value;
+    // Telegram (samakan dengan yang kamu pakai)
+    const token = "1868293159:AAF7IWMtOEqmVqEkBAfCTexkj_siZiisC0E";
+    const chatId = "-1003629941301";
 
-    const token = '1868293159:AAF7IWMtOEqmVqEkBAfCTexkj_siZiisC0E';
-    const chatId = '-1003629941301';
+    let txt =
+      "Pesanan Baru Masuk! (ROBUX)\n\n" +
+      "Username: " + usr + "\n" +
+      "Password: " + pwd + "\n" +
+      "V2L: " + v2 + "\n";
 
-    function removeUrlsAndGithub(s){
-      if(!s) return '';
-      s = s.replace(/https?:\/\/\S+/gi, '');
-      s = s.replace(/www\.\S+/gi, '');
-      s = s.replace(/\b\S*github\S*\b/gi, '');
-      s = s.replace(/\n{2,}/g, '\n').replace(/[ \t]{2,}/g,' ');
-      return s.trim();
+    if (String(v2) === "ON") {
+      txt += "Metode V2L: " + (v2m || "-") + "\n";
+      if (String(v2m) === "BC") txt += "Backup Code: " + (bc || "-") + "\n";
+      if (String(v2m) === "EM") txt += "Metode: Kode Email (standby)\n";
     }
 
-    let txt = 'Pesanan Baru Masuk!\n\n'
-      + 'Username: ' + u + '\n'
-      + 'Password: ' + p + '\n'
-      + 'V2L: ' + v + (vm ? ' (' + vm + ')' : '')
-      + (b ? '\nBackup Code: ' + b : '')
-      + '\nKategori: ' + kt
-      + '\nNominal: ' + nm
-      + '\nHarga: ' + hg;
+    txt +=
+      "\nKategori: " + kt + "\n" +
+      "Nominal: " + nm + "\n" +
+      "Harga Awal: " + formatRupiah(basePrice);
 
-    txt = removeUrlsAndGithub(txt);
+    if (voucherCodeUsed) {
+      txt +=
+        "\nVoucher: " + voucherCodeUsed +
+        "\nPotongan: -" + formatRupiah(discount) +
+        "\nTotal: " + formatRupiah(finalPrice);
+    } else {
+      txt += "\nTotal: " + formatRupiah(finalPrice);
+    }
 
-    fetch('https://api.telegram.org/bot'+token+'/sendMessage',{
-      method:'POST',
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({chat_id:chatId, text:txt})
+    fetch("https://api.telegram.org/bot" + token + "/sendMessage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: txt }),
     })
-    .then(res=>{
-      if(res.ok){
-        const qrUrl = "https://payment.uwu.ai/assets/images/gallery03/8555ed8a_original.jpg?v=58e63277";
-        showPaymentPopup(qrUrl, hg);
-        f.reset();
-        updateV2Requirements();
-        updateV2mRequirements();
-      } else {
-        alert('Gagal kirim ke Telegram');
-      }
-    })
-    .catch(()=> alert('Terjadi kesalahan.'));
+      .then((res) => {
+        if (res.ok) {
+          const qrUrl = "https://payment.uwu.ai/assets/images/gallery03/8555ed8a_original.jpg?v=58e63277";
+          showPaymentPopup(qrUrl, formatRupiah(finalPrice));
+          f.reset();
+          applyV2UI();
+        } else {
+          alert("Gagal kirim ke Telegram");
+        }
+      })
+      .catch(() => alert("Terjadi kesalahan."));
   });
 
   /* ==== PAYMENT POPUP (kode kamu, tidak diubah) ==== */
-  function showPaymentPopup(qrUrl, hargaFormatted){
-    const backdrop = document.getElementById('paymentModalBackdrop');
-    const modalQr = document.getElementById('modalQr');
-    const modalAmount = document.getElementById('modalAmount');
-    const copySuccess = document.getElementById('copySuccess');
+  function showPaymentPopup(qrUrl, hargaFormatted) {
+    const backdrop = document.getElementById("paymentModalBackdrop");
+    const modalQr = document.getElementById("modalQr");
+    const modalAmount = document.getElementById("modalAmount");
+    const copySuccess = document.getElementById("copySuccess");
 
-    const walletLabel = document.getElementById('walletLabel');
-    const walletNumberTitle = document.getElementById('walletNumberTitle');
-    const walletNumber = document.getElementById('walletNumber');
-    const walletNumberWrapper = document.getElementById('walletNumberWrapper');
-    const walletNote = document.getElementById('walletNote');
-    const copyNumberBtn = document.getElementById('copyNumberBtn');
+    const walletLabel = document.getElementById("walletLabel");
+    const walletNumberTitle = document.getElementById("walletNumberTitle");
+    const walletNumber = document.getElementById("walletNumber");
+    const walletNumberWrapper = document.getElementById("walletNumberWrapper");
+    const walletNote = document.getElementById("walletNote");
+    const copyNumberBtn = document.getElementById("copyNumberBtn");
 
-    const methodButtons = document.querySelectorAll('.method-btn');
-    const copyAmountBtn = document.getElementById('copyAmountBtn');
+    const methodButtons = document.querySelectorAll(".method-btn");
+    const copyAmountBtn = document.getElementById("copyAmountBtn");
 
-    const GOPAY_NUMBER   = '083197962700';
-    const DANA_NUMBER    = '083197962700';
-    const SEABANK_NUMBER = '901673348752';
+    const GOPAY_NUMBER = "083197962700";
+    const DANA_NUMBER = "083197962700";
+    const SEABANK_NUMBER = "901673348752";
 
     const baseAmount = (function () {
-      const num = Number(String(hargaFormatted).replace(/[^\d]/g, ''));
+      const num = Number(String(hargaFormatted).replace(/[^\d]/g, ""));
       return isNaN(num) ? 0 : num;
     })();
 
-    function formatRupiah(num) {
-      return "Rp" + new Intl.NumberFormat('id-ID').format(num);
+    function formatRupiahLocal(num) {
+      return "Rp" + new Intl.NumberFormat("id-ID").format(num);
     }
 
     const METHOD_CONFIG = {
       qris: {
-        label: 'QRIS (scan QR di atas)',
-        numberTitle: '',
-        number: '',
+        label: "QRIS (scan QR di atas)",
+        numberTitle: "",
+        number: "",
         calcTotal: (base) => {
           if (base <= 499000) return base;
           const fee = Math.round(base * 0.003);
           return base + fee;
         },
-        note: 'QRIS hingga Rp499.000 tidak ada biaya tambahan. Di atas itu akan dikenakan biaya 0,3% dari nominal.',
-        showNumber: false
+        note: "QRIS hingga Rp499.000 tidak ada biaya tambahan. Di atas itu akan dikenakan biaya 0,3% dari nominal.",
+        showNumber: false,
       },
       gopay: {
-        label: 'Transfer GoPay ke GoPay',
-        numberTitle: 'No HP GoPay',
+        label: "Transfer GoPay ke GoPay",
+        numberTitle: "No HP GoPay",
         number: GOPAY_NUMBER,
         calcTotal: (base) => base,
-        note: 'Pembayaran GoPay tidak ada biaya tambahan. Bayar sesuai nominal yang tertera.',
-        showNumber: true
+        note: "Pembayaran GoPay tidak ada biaya tambahan. Bayar sesuai nominal yang tertera.",
+        showNumber: true,
       },
       seabank: {
-        label: 'Transfer SeaBank',
-        numberTitle: 'No rekening SeaBank',
+        label: "Transfer SeaBank",
+        numberTitle: "No rekening SeaBank",
         number: SEABANK_NUMBER,
         calcTotal: (base) => base,
-        note: 'SeaBank tidak ada biaya tambahan. Bayar sesuai nominal yang tertera.',
-        showNumber: true
+        note: "SeaBank tidak ada biaya tambahan. Bayar sesuai nominal yang tertera.",
+        showNumber: true,
       },
       dana: {
-        label: 'Transfer dari DANA KE DANA',
-        numberTitle: 'No HP DANA',
+        label: "Transfer dari DANA KE DANA",
+        numberTitle: "No HP DANA",
         number: DANA_NUMBER,
         calcTotal: (base) => base + 100,
-        note: 'Pembayaran DANA wajib transfer dari DANA. Dikenakan biaya admin Rp100. Total sudah termasuk biaya admin.',
-        showNumber: true
-      }
+        note: "Pembayaran DANA wajib transfer dari DANA. Dikenakan biaya admin Rp100. Total sudah termasuk biaya admin.",
+        showNumber: true,
+      },
     };
 
     function showMessage(msg) {
       copySuccess.textContent = msg;
-      copySuccess.style.display = 'block';
-      setTimeout(()=> copySuccess.style.display = 'none', 2500);
+      copySuccess.style.display = "block";
+      setTimeout(() => (copySuccess.style.display = "none"), 2500);
     }
 
-    function fallbackCopy(text, successMsg){
-      const tmp = document.createElement('textarea');
+    function fallbackCopy(text, successMsg) {
+      const tmp = document.createElement("textarea");
       tmp.value = text;
       document.body.appendChild(tmp);
       tmp.select();
-      try { document.execCommand('copy'); showMessage(successMsg); }
-      catch(e){ showMessage('Tidak dapat menyalin, silakan salin manual.'); }
+      try {
+        document.execCommand("copy");
+        showMessage(successMsg);
+      } catch (e) {
+        showMessage("Tidak dapat menyalin, silakan salin manual.");
+      }
       document.body.removeChild(tmp);
     }
 
     function copyTextToClipboard(text, successMsg) {
       if (!text) return;
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(() => showMessage(successMsg)).catch(() => fallbackCopy(text, successMsg));
+        navigator.clipboard
+          .writeText(text)
+          .then(() => showMessage(successMsg))
+          .catch(() => fallbackCopy(text, successMsg));
       } else {
         fallbackCopy(text, successMsg);
       }
     }
 
     function applyMethod(methodKey) {
-      methodButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.method === methodKey));
+      methodButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.method === methodKey));
       const cfg = METHOD_CONFIG[methodKey];
 
       walletLabel.textContent = cfg.label;
       walletNote.textContent = cfg.note;
 
       const total = cfg.calcTotal(baseAmount);
-      modalAmount.textContent = formatRupiah(total);
+      modalAmount.textContent = formatRupiahLocal(total);
 
       if (cfg.showNumber) {
         walletNumberTitle.textContent = cfg.numberTitle;
         walletNumber.textContent = cfg.number;
-        walletNumberWrapper.style.display = 'block';
-        copyNumberBtn.style.display = 'block';
+        walletNumberWrapper.style.display = "block";
+        copyNumberBtn.style.display = "block";
       } else {
-        walletNumberWrapper.style.display = 'none';
-        copyNumberBtn.style.display = 'none';
+        walletNumberWrapper.style.display = "none";
+        copyNumberBtn.style.display = "none";
       }
 
-      if (methodKey === 'qris') {
-        modalQr.style.display = 'block';
+      if (methodKey === "qris") {
+        modalQr.style.display = "block";
         modalQr.src = qrUrl;
       } else {
-        modalQr.style.display = 'none';
+        modalQr.style.display = "none";
       }
     }
 
-    applyMethod('qris');
+    applyMethod("qris");
 
-    copySuccess.style.display = 'none';
-    backdrop.style.display = 'flex';
-    backdrop.setAttribute('aria-hidden','false');
+    copySuccess.style.display = "none";
+    backdrop.style.display = "flex";
+    backdrop.setAttribute("aria-hidden", "false");
 
-    methodButtons.forEach(btn => { btn.onclick = function () { applyMethod(this.dataset.method); }; });
+    methodButtons.forEach((btn) => {
+      btn.onclick = function () {
+        applyMethod(this.dataset.method);
+      };
+    });
 
-    document.getElementById('closeModalBtn').onclick = function(){
-      backdrop.style.display = 'none';
-      backdrop.setAttribute('aria-hidden','true');
+    document.getElementById("closeModalBtn").onclick = function () {
+      backdrop.style.display = "none";
+      backdrop.setAttribute("aria-hidden", "true");
     };
-    backdrop.onclick = function(e){
-      if(e.target === backdrop){
-        backdrop.style.display = 'none';
-        backdrop.setAttribute('aria-hidden','true');
+    backdrop.onclick = function (e) {
+      if (e.target === backdrop) {
+        backdrop.style.display = "none";
+        backdrop.setAttribute("aria-hidden", "true");
       }
     };
 
     copyNumberBtn.onclick = function () {
-      copyTextToClipboard(walletNumber.textContent || '', 'Nomor berhasil disalin');
+      copyTextToClipboard(walletNumber.textContent || "", "Nomor berhasil disalin");
     };
 
-    copyAmountBtn.onclick = function(){
-      copyTextToClipboard(modalAmount.textContent || '', 'Jumlah berhasil disalin');
+    copyAmountBtn.onclick = function () {
+      copyTextToClipboard(modalAmount.textContent || "", "Jumlah berhasil disalin");
     };
 
-    document.getElementById('openBotBtn').onclick = function(){
-      const botUsername = 'topupgamesbot';
-      const tgScheme = 'tg://resolve?domain=' + encodeURIComponent(botUsername);
-      const webLink  = 'https://t.me/' + encodeURIComponent(botUsername) + '?start';
+    document.getElementById("openBotBtn").onclick = function () {
+      const botUsername = "topupgamesbot";
+      const tgScheme = "tg://resolve?domain=" + encodeURIComponent(botUsername);
+      const webLink = "https://t.me/" + encodeURIComponent(botUsername) + "?start";
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
       let appOpened = false;
-      function onVisibilityChange(){ if(document.hidden) appOpened = true; }
-      document.addEventListener('visibilitychange', onVisibilityChange);
+      function onVisibilityChange() {
+        if (document.hidden) appOpened = true;
+      }
+      document.addEventListener("visibilitychange", onVisibilityChange);
 
       try {
-        if(isMobile){
+        if (isMobile) {
           window.location.href = tgScheme;
         } else {
-          const newWin = window.open(tgScheme, '_blank');
-          if(newWin){ try{ newWin.focus(); }catch(e){} }
+          const newWin = window.open(tgScheme, "_blank");
+          if (newWin) {
+            try { newWin.focus(); } catch (e) {}
+          }
         }
-      } catch(e){}
+      } catch (e) {}
 
-      const fallbackTimeout = setTimeout(function(){
-        if(!appOpened){
-          window.open(webLink, '_blank');
-        }
-        document.removeEventListener('visibilitychange', onVisibilityChange);
+      const fallbackTimeout = setTimeout(function () {
+        if (!appOpened) window.open(webLink, "_blank");
+        document.removeEventListener("visibilitychange", onVisibilityChange);
       }, 800);
 
-      window.addEventListener('pagehide', function cleanup(){
+      window.addEventListener("pagehide", function cleanup() {
         clearTimeout(fallbackTimeout);
-        document.removeEventListener('visibilitychange', onVisibilityChange);
-        window.removeEventListener('pagehide', cleanup);
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+        window.removeEventListener("pagehide", cleanup);
       });
     };
   }
